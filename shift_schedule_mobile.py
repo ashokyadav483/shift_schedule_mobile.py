@@ -525,6 +525,24 @@ elif st.session_state.mobile_view == "export":
     if st.session_state.schedule is not None:
         st.info("Export your schedule to Excel for sharing and printing")
         
+        # --- FIX: Get month and year from session state or current date ---
+        from datetime import datetime
+        
+        # Try to get month/year from session state, or use current date
+        if 'current_month' not in st.session_state:
+            st.session_state.current_month = datetime.now().strftime("%B")
+            st.session_state.current_year = datetime.now().year
+        
+        # Let user select month/year for export
+        col1, col2 = st.columns(2)
+        with col1:
+            export_year = st.number_input("Year", 2020, 2100, st.session_state.current_year, key="export_year")
+        with col2:
+            export_month = st.selectbox("Month", list(calendar.month_name)[1:], 
+                                        index=list(calendar.month_name).index(st.session_state.current_month)-1, 
+                                        key="export_month")
+        # --- END OF FIX ---
+        
         # Preview before export
         with st.expander("Preview Schedule", expanded=False):
             st.dataframe(st.session_state.schedule.head(), use_container_width=True)
@@ -538,9 +556,9 @@ elif st.session_state.mobile_view == "export":
             
             df = st.session_state.schedule
             
-            # Add title
+            # Add title - FIXED: use export_month and export_year
             ws1.merge_cells('A1:Z1')
-            ws1['A1'] = f"Shift Schedule - {month} {year}"
+            ws1['A1'] = f"Shift Schedule - {export_month} {export_year}"
             ws1['A1'].font = Font(size=14, bold=True)
             ws1['A1'].alignment = Alignment(horizontal='center')
             
@@ -597,6 +615,7 @@ elif st.session_state.mobile_view == "export":
             ws2.append(["Total Shift Assignments", total_shifts])
             ws2.append(["Night Shifts", night_shifts])
             ws2.append(["Total Leaves", leaves])
+            ws2.append(["Export Date", datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
             
             # Save
             output_file = "shift_schedule.xlsx"
@@ -607,7 +626,7 @@ elif st.session_state.mobile_view == "export":
                 st.download_button(
                     label="📥 Download Excel File",
                     data=f,
-                    file_name=f"shift_schedule_{year}_{month}.xlsx",
+                    file_name=f"shift_schedule_{export_year}_{export_month}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
