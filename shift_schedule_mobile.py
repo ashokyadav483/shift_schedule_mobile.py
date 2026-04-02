@@ -314,7 +314,7 @@ if st.session_state.mobile_view == "schedule":
         }
         
         # Show fewer columns on mobile (first 7 days + scroll)
-        display_cols = ["Employee Name", "Employee ID", "Department"] + [str(d) for d in range(1, min(8, days_in_month + 1))]
+        display_cols = ["Employee Name", "Employee ID", "Department"] + [str(d) for d in range(1, min(31, days_in_month + 1))]
         
         st.info("💡 Tip: Swipe horizontally to see more days. Tap a cell to select shift type.")
         
