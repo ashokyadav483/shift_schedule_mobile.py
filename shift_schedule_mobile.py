@@ -294,52 +294,42 @@ if st.session_state.mobile_view == "schedule":
             st.warning("Add employees first")
     
     # Display and Edit Schedule
-if st.session_state.schedule is not None:
-    st.markdown(f"### 📅 {month} {year}")
-    
-    # Shift quick picker (for faster data entry on mobile)
-    with st.expander("⚡ Quick Shift Select", expanded=False):
-        st.caption("Tap a shift to copy its code:")
-        shift_cols = st.columns(5)
-        for idx, (code, config) in enumerate(SHIFT_CONFIG.items()):
-            with shift_cols[idx]:
-                if st.button(f"{config['icon']} {code}", key=f"quick_{code}"):
-                    st.session_state.quick_shift = code
-                    st.toast(f"Selected: {config['name']} ({code})", icon="✅")
-    
-    # --- FIX: Add row number column starting from 1 ---
-    display_df = st.session_state.schedule[display_cols].copy()
-    display_df.insert(0, "#", range(1, len(display_df) + 1))  # Add row numbers starting from 1
-    
-    column_config = {
-        "#": st.column_config.NumberColumn("Row", width="small"),
-        "Employee Name": st.column_config.TextColumn(disabled=True, width="small"),
-        "Employee ID": st.column_config.TextColumn(disabled=True, width="small"),
-        "Department": st.column_config.TextColumn(disabled=True, width="small"),
-    }
-    
-    # Show fewer columns on mobile (first 7 days + scroll)
-    display_cols_with_index = ["#", "Employee Name", "Employee ID", "Department"] + [str(d) for d in range(1, min(8, days_in_month + 1))]
-    
-    st.info("💡 Tip: Swipe horizontally to see more days. Tap a cell to select shift type.")
-    
-    edited_df = st.data_editor(
-        display_df[display_cols_with_index],
-        use_container_width=True,
-        column_config=column_config,
-        height=500,
-        key="schedule_editor"
-    )
-    
-    # Update full schedule (remove index column before saving back)
-    edited_df_no_index = edited_df.drop(columns=["#"]).reset_index(drop=True)
-    for col in ["Employee Name", "Employee ID", "Department"]:
-        if col in edited_df_no_index.columns:
-            st.session_state.schedule[col] = edited_df_no_index[col]
-    for d in range(1, min(8, days_in_month + 1)):
-        col = str(d)
-        if col in edited_df_no_index.columns:
-            st.session_state.schedule[col] = edited_df_no_index[col]
+    if st.session_state.schedule is not None:
+        st.markdown(f"### 📅 {month} {year}")
+        
+        # Shift quick picker (for faster data entry on mobile)
+        with st.expander("⚡ Quick Shift Select", expanded=False):
+            st.caption("Tap a shift to copy its code:")
+            shift_cols = st.columns(5)
+            for idx, (code, config) in enumerate(SHIFT_CONFIG.items()):
+                with shift_cols[idx]:
+                    if st.button(f"{config['icon']} {code}", key=f"quick_{code}"):
+                        st.session_state.quick_shift = code
+                        st.toast(f"Selected: {config['name']} ({code})", icon="✅")
+        
+        column_config = {
+            "Employee Name": st.column_config.TextColumn(disabled=True, width="small"),
+            "Employee ID": st.column_config.TextColumn(disabled=True, width="small"),
+            "Department": st.column_config.TextColumn(disabled=True, width="small"),
+        }
+        
+        # Show fewer columns on mobile (first 7 days + scroll)
+        display_cols = ["Employee Name", "Employee ID", "Department"] + [str(d) for d in range(1, min(31, days_in_month + 1))]
+        
+        st.info("💡 Tip: Swipe horizontally to see more days. Tap a cell to select shift type.")
+        
+        edited_df = st.data_editor(
+            st.session_state.schedule[display_cols],
+            use_container_width=True,
+            column_config=column_config,
+            height=500,
+            key="schedule_editor"
+        )
+        
+        # Update full schedule
+        for col in display_cols:
+            if col in edited_df.columns:
+                st.session_state.schedule[col] = edited_df[col]
         
         # Mobile summary cards
         st.markdown("### 📊 Quick Stats")
