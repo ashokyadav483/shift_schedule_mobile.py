@@ -224,52 +224,112 @@ with nav_col3:
 st.markdown("---")
 
 # ---------------- SCHEDULE VIEW ----------------
-if st.session_state.schedule is not None:
-    st.markdown(f"### 📅 {month} {year}")
+if st.session_state.mobile_view == "schedule":
     
-    # Shift quick picker (for faster data entry on mobile)
-    with st.expander("⚡ Quick Shift Select", expanded=False):
-        st.caption("Tap a shift to copy its code:")
-        shift_cols = st.columns(5)
-        for idx, (code, config) in enumerate(SHIFT_CONFIG.items()):
-            with shift_cols[idx]:
-                if st.button(f"{config['icon']} {code}", key=f"quick_{code}"):
-                    st.session_state.quick_shift = code
-                    st.toast(f"Selected: {config['name']} ({code})", icon="✅")
+    # Year/Month Selection (Collapsible)
+    with st.expander("📅 Select Month", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            year = st.number_input("Year", 2020, 2100, 2026, label_visibility="collapsed")
+        with col2:
+            month = st.selectbox("Month", list(calendar.month_name)[1:], label_visibility="collapsed")
+        month_num = list(calendar.month_name).index(month)
+        days_in_month = calendar.monthrange(year, month_num)[1]
     
-    # --- FIX: Add row number column starting from 1 ---
-    display_df = st.session_state.schedule[display_cols].copy()
-    display_df.insert(0, "#", range(1, len(display_df) + 1))  # Add row numbers starting from 1
+    # Employee Management (Collapsible)
+    with st.expander("👥 Employee Management", expanded=False):
+        st.markdown("#### Add New Employee")
+        col1, col2 = st.columns(2)
+        with col1:
+            name = st.text_input("Name", placeholder="Employee Name", key="emp_name")
+        with col2:
+            code = st.text_input("ID", placeholder="Employee ID", key="emp_id")
+        
+        department = st.selectbox("Department", ["Maintenance", "Production", "Quality", "Warehouse", "Other"])
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("➕ Add Employee", use_container_width=True):
+                if name and code:
+                    emp = {"Name": name, "ID": code, "Department": department}
+                    if emp not in st.session_state.employees:
+                        st.session_state.employees.append(emp)
+                        st.success(f"✅ {name} added")
+                        st.rerun()
+                    else:
+                        st.warning("Already exists")
+                else:
+                    st.error("Enter Name & ID")
+        
+        with col2:
+            if st.button("🗑️ Clear All", use_container_width=True):
+                st.session_state.employees = []
+                st.session_state.schedule = None
+                st.rerun()
+        
+        if st.session_state.employees:
+            st.markdown("#### Current Employees")
+            emp_df = pd.DataFrame(st.session_state.employees)
+            st.dataframe(emp_df, use_container_width=True, hide_index=True)
+            st.caption(f"Total: {len(st.session_state.employees)} employees")
     
-    column_config = {
-        "#": st.column_config.NumberColumn("Row", width="small"),
-        "Employee Name": st.column_config.TextColumn(disabled=True, width="small"),
-        "Employee ID": st.column_config.TextColumn(disabled=True, width="small"),
-        "Department": st.column_config.TextColumn(disabled=True, width="small"),
-    }
+    # Generate Schedule Button
+    if st.button("🔄 Generate New Schedule", type="primary", use_container_width=True):
+        if st.session_state.employees:
+            data = []
+            for emp in st.session_state.employees:
+                row = {
+                    "Employee Name": emp["Name"],
+                    "Employee ID": emp["ID"],
+                    "Department": emp["Department"]
+                }
+                for d in range(1, days_in_month + 1):
+                    row[str(d)] = ""
+                data.append(row)
+            
+            st.session_state.schedule = pd.DataFrame(data)
+            st.success("✅ Schedule generated!")
+            st.balloons()
+        else:
+            st.warning("Add employees first")
     
-    # Show fewer columns on mobile (first 7 days + scroll)
-    display_cols_with_index = ["#", "Employee Name", "Employee ID", "Department"] + [str(d) for d in range(1, min(8, days_in_month + 1))]
-    
-    st.info("💡 Tip: Swipe horizontally to see more days. Tap a cell to select shift type.")
-    
-    edited_df = st.data_editor(
-        display_df[display_cols_with_index],
-        use_container_width=True,
-        column_config=column_config,
-        height=500,
-        key="schedule_editor"
-    )
-    
-    # Update full schedule (remove index column before saving back)
-    edited_df_no_index = edited_df.drop(columns=["#"]).reset_index(drop=True)
-    for col in ["Employee Name", "Employee ID", "Department"]:
-        if col in edited_df_no_index.columns:
-            st.session_state.schedule[col] = edited_df_no_index[col]
-    for d in range(1, min(8, days_in_month + 1)):
-        col = str(d)
-        if col in edited_df_no_index.columns:
-            st.session_state.schedule[col] = edited_df_no_index[col]
+    # Display and Edit Schedule
+    if st.session_state.schedule is not None:
+        st.markdown(f"### 📅 {month} {year}")
+        
+        # Shift quick picker (for faster data entry on mobile)
+        with st.expander("⚡ Quick Shift Select", expanded=False):
+            st.caption("Tap a shift to copy its code:")
+            shift_cols = st.columns(5)
+            for idx, (code, config) in enumerate(SHIFT_CONFIG.items()):
+                with shift_cols[idx]:
+                    if st.button(f"{config['icon']} {code}", key=f"quick_{code}"):
+                        st.session_state.quick_shift = code
+                        st.toast(f"Selected: {config['name']} ({code})", icon="✅")
+        
+        column_config = {
+            "Employee Name": st.column_config.TextColumn(disabled=True, width="small"),
+            "Employee ID": st.column_config.TextColumn(disabled=True, width="small"),
+            "Department": st.column_config.TextColumn(disabled=True, width="small"),
+        }
+        
+        # Show fewer columns on mobile (first 7 days + scroll)
+        display_cols = ["Employee Name", "Employee ID", "Department"] + [str(d) for d in range(1, min(8, days_in_month + 1))]
+        
+        st.info("💡 Tip: Swipe horizontally to see more days. Tap a cell to select shift type.")
+        
+        edited_df = st.data_editor(
+            st.session_state.schedule[display_cols],
+            use_container_width=True,
+            column_config=column_config,
+            height=500,
+            key="schedule_editor"
+        )
+        
+        # Update full schedule
+        for col in display_cols:
+            if col in edited_df.columns:
+                st.session_state.schedule[col] = edited_df[col]
         
         # Mobile summary cards
         st.markdown("### 📊 Quick Stats")
@@ -465,24 +525,6 @@ elif st.session_state.mobile_view == "export":
     if st.session_state.schedule is not None:
         st.info("Export your schedule to Excel for sharing and printing")
         
-        # --- FIX: Get month and year from session state or current date ---
-        from datetime import datetime
-        
-        # Try to get month/year from session state, or use current date
-        if 'current_month' not in st.session_state:
-            st.session_state.current_month = datetime.now().strftime("%B")
-            st.session_state.current_year = datetime.now().year
-        
-        # Let user select month/year for export
-        col1, col2 = st.columns(2)
-        with col1:
-            export_year = st.number_input("Year", 2020, 2100, st.session_state.current_year, key="export_year")
-        with col2:
-            export_month = st.selectbox("Month", list(calendar.month_name)[1:], 
-                                        index=list(calendar.month_name).index(st.session_state.current_month)-1, 
-                                        key="export_month")
-        # --- END OF FIX ---
-        
         # Preview before export
         with st.expander("Preview Schedule", expanded=False):
             st.dataframe(st.session_state.schedule.head(), use_container_width=True)
@@ -496,9 +538,9 @@ elif st.session_state.mobile_view == "export":
             
             df = st.session_state.schedule
             
-            # Add title - FIXED: use export_month and export_year
+            # Add title
             ws1.merge_cells('A1:Z1')
-            ws1['A1'] = f"Shift Schedule - {export_month} {export_year}"
+            ws1['A1'] = f"Shift Schedule - {month} {year}"
             ws1['A1'].font = Font(size=14, bold=True)
             ws1['A1'].alignment = Alignment(horizontal='center')
             
@@ -555,7 +597,6 @@ elif st.session_state.mobile_view == "export":
             ws2.append(["Total Shift Assignments", total_shifts])
             ws2.append(["Night Shifts", night_shifts])
             ws2.append(["Total Leaves", leaves])
-            ws2.append(["Export Date", datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
             
             # Save
             output_file = "shift_schedule.xlsx"
@@ -566,7 +607,7 @@ elif st.session_state.mobile_view == "export":
                 st.download_button(
                     label="📥 Download Excel File",
                     data=f,
-                    file_name=f"shift_schedule_{export_year}_{export_month}.xlsx",
+                    file_name=f"shift_schedule_{year}_{month}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
