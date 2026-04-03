@@ -54,6 +54,11 @@ st.markdown("""
         min-width: 100%;
     }
     
+    /* HIDE the default row indices that Streamlit adds */
+    .stDataEditor div[data-testid="stDataEditor"] [role="row"] > div:first-child {
+        display: none !important;
+    }
+    
     /* Better cards and containers */
     .element-container, .stAlert, .stInfo, .stSuccess, .stWarning {
         margin: 8px 0;
@@ -193,6 +198,16 @@ if "schedule" not in st.session_state:
 if "mobile_view" not in st.session_state:
     st.session_state.mobile_view = "schedule"  # schedule, analytics, export
 
+# Store current month/year in session state
+if "current_year" not in st.session_state:
+    st.session_state.current_year = 2026
+
+if "current_month" not in st.session_state:
+    st.session_state.current_month = "April"
+
+if "days_in_month" not in st.session_state:
+    st.session_state.days_in_month = 30
+
 # ---------------- SHIFT CONFIGURATION ----------------
 SHIFT_CONFIG = {
     "A": {"name": "Morning", "time": "06:00-14:00", "night": False, "icon": "🌅"},
@@ -235,6 +250,11 @@ if st.session_state.mobile_view == "schedule":
             month = st.selectbox("Month", list(calendar.month_name)[1:], label_visibility="collapsed")
         month_num = list(calendar.month_name).index(month)
         days_in_month = calendar.monthrange(year, month_num)[1]
+        
+        # Store in session state for export
+        st.session_state.current_year = year
+        st.session_state.current_month = month
+        st.session_state.days_in_month = days_in_month
     
     # Employee Management (Collapsible)
     with st.expander("👥 Employee Management", expanded=False):
@@ -270,6 +290,8 @@ if st.session_state.mobile_view == "schedule":
         if st.session_state.employees:
             st.markdown("#### Current Employees")
             emp_df = pd.DataFrame(st.session_state.employees)
+            # Add row numbers starting from 1 as a visible column
+            emp_df.insert(0, "#", range(1, len(emp_df) + 1))
             st.dataframe(emp_df, use_container_width=True, hide_index=True)
             st.caption(f"Total: {len(st.session_state.employees)} employees")
     
@@ -283,7 +305,7 @@ if st.session_state.mobile_view == "schedule":
                     "Employee ID": emp["ID"],
                     "Department": emp["Department"]
                 }
-                for d in range(1, days_in_month + 1):
+                for d in range(1, st.session_state.days_in_month + 1):
                     row[str(d)] = ""
                 data.append(row)
             
@@ -295,7 +317,7 @@ if st.session_state.mobile_view == "schedule":
     
     # Display and Edit Schedule
     if st.session_state.schedule is not None:
-        st.markdown(f"### 📅 {month} {year}")
+        st.markdown(f"### 📅 {st.session_state.current_month} {st.session_state.current_year}")
         
         # Shift quick picker (for faster data entry on mobile)
         with st.expander("⚡ Quick Shift Select", expanded=False):
@@ -307,29 +329,50 @@ if st.session_state.mobile_view == "schedule":
                         st.session_state.quick_shift = code
                         st.toast(f"Selected: {config['name']} ({code})", icon="✅")
         
+        # Prepare display dataframe with row numbers starting from 1
+        display_df = st.session_state.schedule.copy()
+        # Add row number column at the beginning (this will be our visible row number)
+        display_df.insert(0, "S.No.", range(1, len(display_df) + 1))
+        
+        # Define which columns to show (first 7 days for mobile)
+        day_columns = [str(d) for d in range(1, min(31, st.session_state.days_in_month + 1))]
+        display_cols = ["S.No.", "Employee Name", "Employee ID", "Department"] + day_columns
+        
         column_config = {
+            "S.No.": st.column_config.NumberColumn("S.No.", width="small", disabled=True),
             "Employee Name": st.column_config.TextColumn(disabled=True, width="small"),
             "Employee ID": st.column_config.TextColumn(disabled=True, width="small"),
             "Department": st.column_config.TextColumn(disabled=True, width="small"),
         }
         
-        # Show fewer columns on mobile (first 7 days + scroll)
-        display_cols = ["Employee Name", "Employee ID", "Department"] + [str(d) for d in range(1, min(31, days_in_month + 1))]
-        
         st.info("💡 Tip: Swipe horizontally to see more days. Tap a cell to select shift type.")
         
+        # Use hide_index=True to remove Streamlit's default 0,1,2 indices
         edited_df = st.data_editor(
-            st.session_state.schedule[display_cols],
+            display_df[display_cols],
             use_container_width=True,
             column_config=column_config,
             height=500,
-            key="schedule_editor"
+            key="schedule_editor",
+            hide_index=True  # This hides the default row numbers
         )
         
-        # Update full schedule
-        for col in display_cols:
-            if col in edited_df.columns:
-                st.session_state.schedule[col] = edited_df[col]
+        # Update the full schedule (remove the S.No. column before saving)
+        edited_df_no_index = edited_df.drop(columns=["S.No."]).reset_index(drop=True)
+        for col in ["Employee Name", "Employee ID", "Department"]:
+            if col in edited_df_no_index.columns:
+                st.session_state.schedule[col] = edited_df_no_index[col]
+        
+        # Update day columns
+        for d in day_columns:
+            if d in edited_df_no_index.columns:
+                st.session_state.schedule[d] = edited_df_no_index[d]
+        
+        # Also update any additional days that might have been edited (beyond first 7)
+        all_day_cols = [str(d) for d in range(1, st.session_state.days_in_month + 1)]
+        for d in all_day_cols:
+            if d not in day_columns and d in edited_df_no_index.columns:
+                st.session_state.schedule[d] = edited_df_no_index[d]
         
         # Mobile summary cards
         st.markdown("### 📊 Quick Stats")
@@ -445,7 +488,7 @@ elif st.session_state.mobile_view == "analytics":
             st.subheader("🌙 Night Shift Analysis")
             
             night_data = []
-            for _, row in st.session_state.schedule.iterrows():
+            for idx, row in st.session_state.schedule.iterrows():
                 employee = row["Employee Name"]
                 night_count = 0
                 consecutive = 0
@@ -461,7 +504,7 @@ elif st.session_state.mobile_view == "analytics":
                         else:
                             consecutive = 0
                 
-                night_data.append({"Employee": employee, "Night Shifts": night_count, "Max Consecutive": max_consecutive})
+                night_data.append({"S.No.": idx + 1, "Employee": employee, "Night Shifts": night_count, "Max Consecutive": max_consecutive})
             
             night_df = pd.DataFrame(night_data)
             fig = px.bar(night_df, x="Employee", y="Night Shifts", title="Night Shifts per Employee")
@@ -473,14 +516,14 @@ elif st.session_state.mobile_view == "analytics":
             st.subheader("🏖️ Leave Analysis")
             
             leave_data = []
-            for _, row in st.session_state.schedule.iterrows():
+            for idx, row in st.session_state.schedule.iterrows():
                 employee = row["Employee Name"]
                 leaves = 0
                 for col in st.session_state.schedule.columns:
                     if col not in ["Employee Name", "Employee ID", "Department"]:
                         if row[col] == "WO":
                             leaves += 1
-                leave_data.append({"Employee": employee, "Leaves": leaves})
+                leave_data.append({"S.No.": idx + 1, "Employee": employee, "Leaves": leaves})
             
             leave_df = pd.DataFrame(leave_data)
             fig = px.bar(leave_df, x="Employee", y="Leaves", title="Leaves per Employee")
@@ -525,9 +568,11 @@ elif st.session_state.mobile_view == "export":
     if st.session_state.schedule is not None:
         st.info("Export your schedule to Excel for sharing and printing")
         
-        # Preview before export
+        # Preview before export with row numbers
         with st.expander("Preview Schedule", expanded=False):
-            st.dataframe(st.session_state.schedule.head(), use_container_width=True)
+            preview_df = st.session_state.schedule.copy()
+            preview_df.insert(0, "S.No.", range(1, len(preview_df) + 1))
+            st.dataframe(preview_df, use_container_width=True, hide_index=True)
         
         if st.button("📊 Generate Excel Report", type="primary", use_container_width=True):
             wb = Workbook()
@@ -536,11 +581,13 @@ elif st.session_state.mobile_view == "export":
             ws1 = wb.active
             ws1.title = "Shift Schedule"
             
-            df = st.session_state.schedule
+            # Add row numbers to export
+            df = st.session_state.schedule.copy()
+            df.insert(0, "S.No.", range(1, len(df) + 1))
             
-            # Add title
+            # Add title - NOW USING SESSION STATE VARIABLES
             ws1.merge_cells('A1:Z1')
-            ws1['A1'] = f"Shift Schedule - {month} {year}"
+            ws1['A1'] = f"Shift Schedule - {st.session_state.current_month} {st.session_state.current_year}"
             ws1['A1'].font = Font(size=14, bold=True)
             ws1['A1'].alignment = Alignment(horizontal='center')
             
@@ -597,6 +644,8 @@ elif st.session_state.mobile_view == "export":
             ws2.append(["Total Shift Assignments", total_shifts])
             ws2.append(["Night Shifts", night_shifts])
             ws2.append(["Total Leaves", leaves])
+            ws2.append(["Month", st.session_state.current_month])
+            ws2.append(["Year", st.session_state.current_year])
             
             # Save
             output_file = "shift_schedule.xlsx"
@@ -607,7 +656,7 @@ elif st.session_state.mobile_view == "export":
                 st.download_button(
                     label="📥 Download Excel File",
                     data=f,
-                    file_name=f"shift_schedule_{year}_{month}.xlsx",
+                    file_name=f"shift_schedule_{st.session_state.current_year}_{st.session_state.current_month}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
